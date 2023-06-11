@@ -72,14 +72,16 @@ This information will be fetched as dynamic routes. So, we must create a dynamic
 Whatever you name the file inside of the square brackets will be the name of the dynamic route. 
 For example: [id] will be the name of the dynamic segment and also the name of the parameter that will be passed to the page.
 
-We can fetch the users information dynamically inside of a getUser function. 
+We can fetch the users information dynamically inside of a getUser function. This function will be placed inside of a libs folder. 
+
+/libs/getUser.jsx
 ```
 export default async function getUser(id) {
 
   const response = await fetch(`https://jsonplaceholder.typicode.com/users/${id}`);
 
   if(!response.ok) {
-    throw new Error('Failed to fetch users');
+    throw new Error('Failed to fetch user');
 
     return response.json(); 
 }
@@ -106,6 +108,142 @@ export default async function UserPage({ params: {id}}) {
   )
 }
 ```
+
+Results of the code above:
+<CustomImage src='https://raw.githubusercontent.com/bwestwood11/blogPosts/main/images/user.jpg' alt='fetching-code' priority  / >
+
+We have successfully fetched the user's information dynamically.
+
+Now let's fetch data in parallel to minimize waterfalls and loading times.
+We will fetch the user's information and their posts at the same time.
+This will be done by using the Promise.all() method and passing in the getUser and getPosts functions. But, first lets create the getPosts function inside of the libs folder.
+
+/libs/getPosts.jsx
+```
+export default async function getPosts(id) {
+
+  const response = await fetch(`https://jsonplaceholder.typicode.com/posts?userId=${id}`);
+
+  if(!response.ok) {
+    throw new Error('Failed to fetch posts');
+
+    return response.json(); 
+}
+}
+```
+
+Now we can use the Promise.all() method to fetch the user's information and their posts at the same time. We will also destructure the user and posts from the Promise.all() method.
+
+/users/[id].jsx
+```
+import getUser from '../../libs/getUser'
+import getPosts from '../../libs/getPosts'
+
+export default async function UserPage({params: {id}}) {
+
+     // initiate both requests in parallel
+     const userData = getUser(id);
+     const userPosts = getPosts(id);
+
+      // wait for both requests to resolve
+      const [user, posts] = await Promise.all([userData, userPosts]);
+
+  return (
+    <div className="text-center w-full mx-auto pt-8">
+      <Link href="/users">Back to users</Link>
+        <h1 className="text-4xl font-bold mb-8 underline">User</h1> 
+        <p>{user.name}</p>
+        <p>{user.email}</p>
+        <h2 className="text-2xl font-bold mb-8 underline">Posts</h2> 
+        {posts.map((post) => {
+          return (
+            <>
+            <p key={post.id}>
+            {post.title}
+            </p> 
+            </>
+          )
+        })}
+    </div>
+  )
+}
+```
+
+Results of the code above:
+<CustomImage src='https://raw.githubusercontent.com/bwestwood11/blogPosts/main/images/userposts.jpg' alt='fetching-code' priority  / >
+
+This method is very useful when you need to fetch data from multiple sources. It will also help minimize waterfalls and loading times.  
+However, using this method will only display the information once both requests have been resolved. This can cause a delay in the user experience if the requests take a long time to resolve.
+
+There is a better way to call multiple requests in parallel that utilizes the Suspense API from React. This will allow a page to progressively render as data is being fetched and show a result to the user while the rest of the content loads.
+
+Let's recreate the code above using the Suspense API.
+
+/users/[id].jsx
+```
+import getUser from '../../libs/getUser'
+import getPosts from '../../libs/getPosts'
+import { Suspense } from 'react';
+import Link from 'next/link';
+import UserPosts from '../../components/UserPosts';
+
+export default async function UserPage({ params: {id}}) {
+
+  // initiate both requests in parallel
+  const userData = getUser(id);
+  const userPosts = getPosts(id);
+
+  // resolve the user data first
+  const user = await userData;
+
+return (
+  <div className="text-center w-full mx-auto pt-8">
+    <Link href="/users">Back to users</Link>
+      <h1 className="text-4xl font-bold mb-8 underline">User</h1> 
+      <p>{user.name}</p>
+      <p>{user.email}</p>
+      <h2 className="text-2xl font-bold mb-8 underline">Posts</h2> 
+      <Suspense fallback={<p>Loading...</p>}>
+      <UserPosts promise={userPosts}>
+      </Suspense>
+  </div>
+)
+}
+```
+
+We must create the UserPosts component that will be used to display the posts. This component will be placed inside of the components folder.
+
+/components/UserPosts.jsx
+```
+export default async function UserPosts({promise}) {
+
+  const posts = await promise;
+
+  return (
+    <>
+    {posts.map((post) => {
+      return (
+        <>
+        <p key={post.id}>
+        {post.title}
+        </p> 
+        </>
+      )
+    })}
+    </>
+  )
+}
+```
+
+Here are the results of the code above inside of the /users/[id].jsx file:
+<CustomImage src='https://raw.githubusercontent.com/bwestwood11/blogPosts/main/images/userposts2.jpg' alt='fetching-code' priority  / >
+
+
+Lets take into account that all fetch requests are cached and deduplocated by default. This means that if we fetch the same data twice, the second request will be served from the cache. This is very useful when we need to fetch the same data multiple times.
+Also, fetching data will store that information in the cache. This means that if we navigate to a page that has already been fetched, the data will be served from the cache. This will help minimize waterfalls and loading times. So, if we have changing 
+data that needs to be fetched, we can use the revalidate property to set the time in seconds to revalidate the data. This will allow us to fetch the data again after the time has passed.
+
+
 
 
 
